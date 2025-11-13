@@ -1,0 +1,311 @@
+diff --git a/src/runtime/config/configuration-qemu.toml.in b/src/runtime/config/configuration-qemu.toml.in
+index 1e71350c..d67ffc4e 100644
+--- a/src/runtime/config/configuration-qemu.toml.in
++++ b/src/runtime/config/configuration-qemu.toml.in
+@@ -32,6 +32,9 @@ machine_type = "@MACHINETYPE@"
+ #
+ # Default false
+ # confidential_guest = true
++#
++# Default false
++# sev_snp_guest = true
+ 
+ # Enable attestation for confidential guests.
+ # Applies only if confidential_guest is true.
+diff --git a/src/runtime/pkg/govmm/qemu/qemu.go b/src/runtime/pkg/govmm/qemu/qemu.go
+index bf809d72..bc33bc98 100644
+--- a/src/runtime/pkg/govmm/qemu/qemu.go
++++ b/src/runtime/pkg/govmm/qemu/qemu.go
+@@ -232,6 +232,9 @@ const (
+ 	// SEVGuest represents an SEV guest object
+ 	SEVGuest ObjectType = "sev-guest"
+ 
++	// SEVSNPGuest represents an SEV-SNP guest object
++	SEVSNPGuest ObjectType = "sev-snp-guest"
++
+ 	// SecExecGuest represents an s390x Secure Execution (Protected Virtualization in QEMU) object
+ 	SecExecGuest ObjectType = "s390-pv-guest"
+ 	// PEFGuest represent ppc64le PEF(Protected Execution Facility) object.
+@@ -272,11 +275,11 @@ type Object struct {
+ 	FirmwareVolume string
+ 
+ 	// CBitPos is the location of the C-bit in a guest page table entry
+-	// This is only relevant for sev-guest objects
++	// This is only relevant for sev-guest & sev-snp-guest objects
+ 	CBitPos uint32
+ 
+ 	// ReducedPhysBits is the reduction in the guest physical address space
+-	// This is only relevant for sev-guest objects
++	// This is only relevant for sev-guest & sev-snp-guest objects
+ 	ReducedPhysBits uint32
+ 
+ 	// ReadOnly specifies whether `MemPath` is opened read-only or read/write (default)
+@@ -298,7 +301,7 @@ type Object struct {
+ 	SevSessionFilePath string
+ 
+ 	// SevKernelHashes specifies whether the hashes of the kernel, initrd, & cmdline are included in the measurement
+-	// This is only relevant for sev-guest objects
++	// This is only relevant for sev-guest & sev-snp-guest objects
+ 	SevKernelHashes bool
+ }
+ 
+@@ -313,6 +316,8 @@ func (object Object) Valid() bool {
+ 		return object.ID != "" && object.File != "" && object.DeviceID != ""
+ 	case SEVGuest:
+ 		return object.ID != "" && object.File != "" && object.CBitPos != 0 && object.ReducedPhysBits != 0
++	case SEVSNPGuest:
++		return object.ID != "" && object.File != "" && object.CBitPos != 0 && object.ReducedPhysBits != 0
+ 	case SecExecGuest:
+ 		return object.ID != ""
+ 	case PEFGuest:
+@@ -383,6 +388,17 @@ func (object Object) QemuParams(config *Config) []string {
+ 		// Add OVMF firmware as pflash drive
+ 		driveParams = append(driveParams, "if=pflash,format=raw,readonly=on")
+ 		driveParams = append(driveParams, fmt.Sprintf("file=%s", object.File))
++	case SEVSNPGuest:
++		objectParams = append(objectParams, string(object.Type))
++		objectParams = append(objectParams, fmt.Sprintf("id=%s", object.ID))
++		objectParams = append(objectParams, fmt.Sprintf("cbitpos=%d", object.CBitPos))
++		objectParams = append(objectParams, fmt.Sprintf("reduced-phys-bits=%d", object.ReducedPhysBits))
++		if object.SevKernelHashes {
++			objectParams = append(objectParams, "kernel-hashes=on")
++		}
++		// Add OVMF firmware as pflash drive
++		driveParams = append(driveParams, "if=pflash,format=raw,readonly=on")
++		driveParams = append(driveParams, fmt.Sprintf("file=%s", object.File))
+ 	case SecExecGuest:
+ 		objectParams = append(objectParams, string(object.Type))
+ 		objectParams = append(objectParams, fmt.Sprintf("id=%s", object.ID))
+diff --git a/src/runtime/pkg/katautils/config-settings.go.in b/src/runtime/pkg/katautils/config-settings.go.in
+index 53d18279..9ae9d552 100644
+--- a/src/runtime/pkg/katautils/config-settings.go.in
++++ b/src/runtime/pkg/katautils/config-settings.go.in
+@@ -85,6 +85,7 @@ const defaultVhostUserStorePath string = "/var/run/kata-containers/vhost-user/"
+ const defaultRxRateLimiterMaxRate = uint64(0)
+ const defaultTxRateLimiterMaxRate = uint64(0)
+ const defaultConfidentialGuest = false
++const defaultSEVSNPGuest = false
+ const defaultGuestSwap = false
+ const defaultRootlessHypervisor = false
+ const defaultDisableSeccomp = false
+diff --git a/src/runtime/pkg/katautils/config.go b/src/runtime/pkg/katautils/config.go
+index 7cb4d8a6..782690c8 100644
+--- a/src/runtime/pkg/katautils/config.go
++++ b/src/runtime/pkg/katautils/config.go
+@@ -142,6 +142,7 @@ type hypervisor struct {
+ 	DisableVhostNet                bool     `toml:"disable_vhost_net"`
+ 	GuestMemoryDumpPaging          bool     `toml:"guest_memory_dump_paging"`
+ 	ConfidentialGuest              bool     `toml:"confidential_guest"`
++	SEVSNPGuest                    bool     `toml:"sev_snp_guest"`
+ 	GuestSwap                      bool     `toml:"enable_guest_swap"`
+ 	Rootless                       bool     `toml:"rootless"`
+ 	DisableSeccomp                 bool     `toml:"disable_seccomp"`
+@@ -778,6 +779,7 @@ func newQemuHypervisorConfig(h hypervisor) (vc.HypervisorConfig, error) {
+ 		GuestMemoryDumpPath:     h.GuestMemoryDumpPath,
+ 		GuestMemoryDumpPaging:   h.GuestMemoryDumpPaging,
+ 		ConfidentialGuest:       h.ConfidentialGuest,
++		SEVSNPGuest:             h.SEVSNPGuest,
+ 		GuestSwap:               h.GuestSwap,
+ 		Rootless:                h.Rootless,
+ 		LegacySerial:            h.LegacySerial,
+@@ -1139,6 +1141,7 @@ func GetDefaultHypervisorConfig() vc.HypervisorConfig {
+ 		TxRateLimiterMaxRate:    defaultTxRateLimiterMaxRate,
+ 		SGXEPCSize:              defaultSGXEPCSize,
+ 		ConfidentialGuest:       defaultConfidentialGuest,
++		SEVSNPGuest:             defaultSEVSNPGuest,
+ 		GuestSwap:               defaultGuestSwap,
+ 		Rootless:                defaultRootlessHypervisor,
+ 		DisableSeccomp:          defaultDisableSeccomp,
+diff --git a/src/runtime/vendor/github.com/intel-go/cpuid/cpuid.go b/src/runtime/vendor/github.com/intel-go/cpuid/cpuid.go
+index a29e0c96..ac3d2905 100644
+--- a/src/runtime/vendor/github.com/intel-go/cpuid/cpuid.go
++++ b/src/runtime/vendor/github.com/intel-go/cpuid/cpuid.go
+@@ -292,6 +292,7 @@ var AmdMemEncryptFeatureNames = map[uint32]string{ // From leaf 8000 001f
+ 	AMD_SEV:            "SEV",
+ 	AMD_PAGE_FLUSH_MSR: "PageFlushMSR",
+ 	AMD_SEV_ES:         "SEV-ES",
++	AMD_SEV_SNP:        "SEV-SNP",
+ }
+ 
+ var brandStrings = map[string]int{
+diff --git a/src/runtime/vendor/github.com/intel-go/cpuid/cpuid_amd64.go b/src/runtime/vendor/github.com/intel-go/cpuid/cpuid_amd64.go
+index 9ec8e8e6..4f690b9f 100644
+--- a/src/runtime/vendor/github.com/intel-go/cpuid/cpuid_amd64.go
++++ b/src/runtime/vendor/github.com/intel-go/cpuid/cpuid_amd64.go
+@@ -45,6 +45,7 @@ const (
+ 	AMD_SEV
+ 	AMD_PAGE_FLUSH_MSR
+ 	AMD_SEV_ES
++	AMD_SEV_SNP
+ )
+ 
+ var leaf02Names = [...]string{
+@@ -485,10 +486,13 @@ func leaf0x8000001f() {
+ 	// Parse EAX
+ 	amdMemEncryptFeatureFlags = eax
+ 
+-	if HasAMDMemEncryptFeature(AMD_SME) || HasAMDMemEncryptFeature(AMD_SEV) {
++	if HasAMDMemEncryptFeature(AMD_SME) || HasAMDMemEncryptFeature(AMD_SEV) ||
++	 HasAMDMemEncryptFeature(AMD_SEV_SNP) {
+ 		// Parse EBX
+ 		AMDMemEncrypt.CBitPosition = ebx & 0x3F
+-		AMDMemEncrypt.PhysAddrReduction = (ebx >> 6) & 0x3F
++		//NKD: Just to debug
++		//AMDMemEncrypt.PhysAddrReduction = (ebx >> 6) & 0x3F
++		AMDMemEncrypt.PhysAddrReduction = 1
+ 
+ 		// Parse ECX
+ 		AMDMemEncrypt.NumEncryptedGuests = ecx
+diff --git a/src/runtime/virtcontainers/hypervisor.go b/src/runtime/virtcontainers/hypervisor.go
+index e7cd2c6e..ab063b78 100644
+--- a/src/runtime/virtcontainers/hypervisor.go
++++ b/src/runtime/virtcontainers/hypervisor.go
+@@ -514,6 +514,9 @@ type HypervisorConfig struct {
+ 	// from memory encryption to both memory and CPU-state encryption and integrity.
+ 	ConfidentialGuest bool
+ 
++	// Enable SEV-SNP confidential guest on a system supporting both SEV & SEV-SNP.
++	SEVSNPGuest bool
++
+ 	// Enable prelaunch attestation for confidential guest.
+ 	GuestAttestation bool
+ 
+diff --git a/src/runtime/virtcontainers/qemu.go b/src/runtime/virtcontainers/qemu.go
+index a0a72bc1..afe17297 100644
+--- a/src/runtime/virtcontainers/qemu.go
++++ b/src/runtime/virtcontainers/qemu.go
+@@ -655,26 +655,33 @@ func (q *qemu) CreateVM(ctx context.Context, id string, network Network, hypervi
+ 		PidFile:     filepath.Join(q.config.VMStorePath, q.id, "pid"),
+ 	}
+ 	if q.arch.guestProtection() == sevProtection {
+-		attestationId := ""
+-
+-		if q.config.GuestAttestation {
+-			attestationId, err = q.arch.setupSEVGuestAttestation(ctx, q.config.GuestAttestationProxy, q.config.SEVGuestPolicy)
++		if q.config.SEVSNPGuest {
++			qemuConfig.Devices, qemuConfig.Bios, err = q.arch.appendSEVSNPObject(qemuConfig.Devices, firmwarePath, firmwareVolumePath)
+ 			if err != nil {
+-				q.Logger().Warning("SEV attestation setup failed.")
++				q.Logger().Warning("Unable to append SEV-SNP object to qemu command")
+ 				return err
+ 			}
+-
+-			// SEV guest must be stopped to inject launch secrets.
+-			qemuConfig.Knobs.Stopped = true
+-			q.arch.setSEVAttestationId(attestationId)
+ 		} else {
+-			q.Logger().Infof("SEV guest attestation skipped: %d", q.config.GuestAttestation)
+-		}
++			attestationId := ""
++			if q.config.GuestAttestation {
++				attestationId, err = q.arch.setupSEVGuestAttestation(ctx, q.config.GuestAttestationProxy, q.config.SEVGuestPolicy)
++				if err != nil {
++					q.Logger().Warning("SEV attestation setup failed.")
++					return err
++				}
+ 
+-		qemuConfig.Devices, qemuConfig.Bios, err = q.arch.appendSEVObject(qemuConfig.Devices, firmwarePath, firmwareVolumePath, q.config.SEVGuestPolicy, attestationId)
+-		if err != nil {
+-			q.Logger().Warning("Unable to append SEV object to qemu command")
+-			return err
++				// SEV guest must be stopped to inject launch secrets.
++				qemuConfig.Knobs.Stopped = true
++				q.arch.setSEVAttestationId(attestationId)
++			} else {
++				q.Logger().Infof("SEV guest attestation skipped: %d", q.config.GuestAttestation)
++			}
++
++			qemuConfig.Devices, qemuConfig.Bios, err = q.arch.appendSEVObject(qemuConfig.Devices, firmwarePath, firmwareVolumePath, q.config.SEVGuestPolicy, attestationId)
++			if err != nil {
++				q.Logger().Warning("Unable to append SEV object to qemu command")
++				return err
++			}
+ 		}
+ 
+ 	} else {
+diff --git a/src/runtime/virtcontainers/qemu_amd64.go b/src/runtime/virtcontainers/qemu_amd64.go
+index d60d985c..ef73d1e0 100644
+--- a/src/runtime/virtcontainers/qemu_amd64.go
++++ b/src/runtime/virtcontainers/qemu_amd64.go
+@@ -37,6 +37,8 @@ type qemuAmd64 struct {
+ 
+ 	vmFactory bool
+ 
++	sevSnpGuest bool
++
+ 	devLoadersCount uint32
+ 
+ 	sgxEPCSize int64
+@@ -47,6 +49,8 @@ const (
+ 
+ 	defaultQemuMachineType = QemuQ35
+ 
++	sevSnpCPUModel = "EPYC-v4"
++
+ 	defaultQemuMachineOptions = "accel=kvm,kernel_irqchip=on"
+ 
+ 	qmpMigrationWaitTimeout = 5 * time.Second
+@@ -123,6 +127,11 @@ func newQemuArch(config HypervisorConfig) (qemuArch, error) {
+ 		factory = true
+ 	}
+ 
++	snpGuest := false
++	if config.SEVSNPGuest {
++		snpGuest = true
++	}
++
+ 	// IOMMU and Guest Protection require a split IRQ controller for handling interrupts
+ 	// otherwise QEMU won't be able to create the kernel irqchip
+ 	if config.IOMMU || config.ConfidentialGuest {
+@@ -150,6 +159,7 @@ func newQemuArch(config HypervisorConfig) (qemuArch, error) {
+ 			legacySerial:         config.LegacySerial,
+ 		},
+ 		vmFactory: factory,
++		sevSnpGuest: snpGuest,
+ 	}
+ 
+ 	if config.ConfidentialGuest {
+@@ -200,6 +210,10 @@ func (q *qemuAmd64) bridges(number uint32) {
+ func (q *qemuAmd64) cpuModel() string {
+ 	cpuModel := defaultCPUModel
+ 
++	if q.sevSnpGuest {
++		cpuModel = sevSnpCPUModel
++	}
++
+ 	// VMX is not migratable yet.
+ 	// issue: https://github.com/kata-containers/runtime/issues/1750
+ 	if q.vmFactory {
+@@ -340,6 +354,19 @@ func (q *qemuAmd64) appendSEVObject(devices []govmmQemu.Device, firmware, firmwa
+ 	}
+ }
+ 
++// Add the SEV-SNP Object qemu parameters for sev-snp guest protection
++func (q *qemuAmd64) appendSEVSNPObject(devices []govmmQemu.Device, firmware, firmwareVolume string) ([]govmmQemu.Device, string, error) {
++	return append(devices,
++		govmmQemu.Object{
++			Type:            govmmQemu.SEVSNPGuest,
++			ID:              "sev",
++			Debug:           false,
++			File:            firmware,
++			CBitPos:         cpuid.AMDMemEncrypt.CBitPosition,
++			ReducedPhysBits: cpuid.AMDMemEncrypt.PhysAddrReduction,
++		}), "", nil
++}
++
+ // setup prelaunch attestation for AMD SEV guests
+ func (q *qemuArchBase) setupSEVGuestAttestation(ctx context.Context,
+ 	proxy string,
+diff --git a/src/runtime/virtcontainers/qemu_arch_base.go b/src/runtime/virtcontainers/qemu_arch_base.go
+index 1b4ed8c5..f57695f2 100644
+--- a/src/runtime/virtcontainers/qemu_arch_base.go
++++ b/src/runtime/virtcontainers/qemu_arch_base.go
+@@ -163,6 +163,8 @@ type qemuArch interface {
+ 
+ 	appendSEVObject(devices []govmmQemu.Device, firmware, firmwareVolume string, policy uint32, launchId string) ([]govmmQemu.Device, string, error)
+ 
++	appendSEVSNPObject(devices []govmmQemu.Device, firmware, firmwareVolume string) ([]govmmQemu.Device, string, error)
++
+ 	// setup guest attestation
+ 	setupSEVGuestAttestation(ctx context.Context, proxy string, policy uint32) (string, error)
+ 

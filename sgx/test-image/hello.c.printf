@@ -1,0 +1,6 @@
+#include <stdio.h>
+
+int main() {
+	printf("Hello enclave-cc!\n");
+	return 0;
+}

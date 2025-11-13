@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: enclave-cc-pod
+spec:
+  restartPolicy: Never
+  containers:
+  #- image: ghcr.io/confidential-containers/test-container-enclave-cc:encrypted 
+  #- image: docker.io/niteeshkd/test-image:key
+  - image: docker.io/niteeshkd/hello-printf:unenc
+  #- image: docker.io/niteeshkd/hello-printf:enc
+  #- image: docker.io/niteeshkd/hello-loop:unenc
+  #- image: docker.io/niteeshkd/hello-loop:enc
+    imagePullPolicy: IfNotPresent
+    name: hello-world
+    resources:
+      limits:
+        sgx.intel.com/epc: 1024Mi
+    env:
+    - name: OCCLUM_RELEASE_ENCLAVE
+      value: "1"
+    workingDir: "/run/rune/occlum_instance/"
+    command:
+    - /run/rune/occlum_instance/build/bin/occlum-run
+    - /bin/hello_world
+  runtimeClassName: enclave-cc

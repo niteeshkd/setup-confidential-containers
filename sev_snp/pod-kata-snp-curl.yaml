@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-snp
+spec:
+  runtimeClassName: kata-qemu-snp
+  restartPolicy: Always
+  containers:
+    - name: cc-snp
+      image: storytel/alpine-bash-curl:latest
+      imagePullPolicy: Always
+      command:
+        - sh
+        - -c
+        - |
+          curl http://127.0.0.1:8006/cdh/resource/default/key/key2; sleep 100

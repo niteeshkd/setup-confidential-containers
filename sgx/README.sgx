@@ -1,0 +1,100 @@
+1) Verify SGX attestation setup
+   a) Platform registration
+       $ sudo systemctl status mpa_registration_tool
+       $ tail -10 /var/log/mpa_registration.log
+       $ cat /etc/mpa_registration.conf
+
+   b) PCCS (Provisioning Certification Caching Service)
+       $ sudo systemctl status pccs
+       $ tail -10 /opt/intel/sgx-dcap-pccs/logs/pccs_server.log
+       $ cat /opt/intel/sgx-dcap-pccs/config/default.json
+
+       #Install Directory: /opt/intel/sgx-dcap-pccs
+
+   c) Network Interface Layer QCNL:
+       $ cat /etc/sgx_default_qcnl.conf 
+
+   d) AESM (Architectural Enclave Service Manager)
+       $ sudo systemctl status aesmd
+       $ cat /etc/aesmd.conf
+
+   e) Test attestation
+      $ cd /data/niteesh/github/SGXDataCenterAttestationPrimitives/SampleCode/QuoteGenerationSample/
+      $ SGX_AESM_ADDR=1 ./app
+
+      $ cd ~/github/linux-sgx/linux/installer/bin/sgxsdk/SampleCode/RemoteAttestation
+      $ sudo ./app 
+      # ECDSA wil pass and EPID will fail.
+
+2) Configure KBS to talk to PCCS.
+    $ cat config/sgx_default_qcnl.conf
+
+    	   //PCCS server address
+	-  "pccs_url": "https://localhost:8081/sgx/certification/v4/"
+	+  "pccs_url": "https://10.200.72.27:8081/sgx/certification/v4/"
+	 
+	   // To accept insecure HTTPS certificate, set this option to false
+	-  ,"use_secure_cert": true
+	+  ,"use_secure_cert": false     
+
+    $ docker compose down
+    $ docker compose up -d
+
+3) Install SGX dveice pulgin to K8s cluster.
+    $ cd ../bin/
+    $ ./install_sgx_plugin.sh
+
+4) Create Decrypt config file for updating custom resource for enclave-cc ccruntime.
+    $ cat decrypt_config.conf  
+    {
+        "key_provider": "provider:attestation-agent:cc_kbc::http://0.0.0.0:8080",
+        "security_validate": true 
+    }
+    $ cat decrypt_config.conf | base64 -w 0 > decrypt_config_base64.securityValidate
+    $ cat decrypt_config_base64.securityValidate 
+    ewogICAgImtleV9wcm92aWRlciI6ICJwcm92aWRlcjphdHRlc3RhdGlvbi1hZ2VudDpjY19rYmM6Omh0dHA6Ly8wLjAuMC4wOjgwODAiLAogICAgInNlY3VyaXR5X3ZhbGlkYXRlIjogdHJ1ZQp9Cg==
+
+5) Start enclave-cc operator after updating custom resource (in HW mode)
+    $ cd /data/niteesh/github/operator
+    $ kubectl apply -k config/default/
+    $ kubectl get pods -n confidential-containers-system 
+
+    $ cat config/samples/enclave-cc/base/ccruntime-enclave-cc.yaml
+         - name: "DECRYPT_CONFIG"
+           value: "ewogICAgImtleV9wcm92aWRlciI6ICJwcm92aWRlcjphdHRlc3RhdGlvbi1hZ2VudDpjY19rYmM6Omh0dHA6Ly8wLjAuMC4wOjgwODAiLAogICAgInNlY3VyaXR5X3ZhbGlkYXRlIjogdHJ1ZQp9Cg=="
+
+    # If needed, we can use the latest payloadImage in the above file.
+        payloadImage: quay.io/confidential-containers/runtime-payload-ci:enclave-cc-HW-cc-kbc-latest
+    
+    $ kubectl apply -k config/samples/enclave-cc/hw/
+    $ kubectl get runtimeclass
+    $ ls -l /opt/kata/
+
+  To uninstall (in HW mode):
+    $ kubectl delete -k config/samples/enclave-cc/hw/ 
+    $ kubectl delete -k config/default/
+
+[5] Start enclave-cc operator (in SIM mode) 
+    $ RELEASE_VERSION="v0.8.0"
+    $ kubectl apply -k "github.com/confidential-containers/operator/config/release?ref=${RELEASE_VERSION}"
+     or
+    $ kubectl apply -k github.com/confidential-containers/operator/config/default
+
+    $ kubectl apply -k github.com/confidential-containers/operator/config/samples/enclave-cc/sim/
+
+    $ cd /data/niteesh/github/operator
+    $ kubectl apply -f tests/e2e/enclave-cc-pod-sim.yaml
+
+6) Launch the pod
+    $ vi enclave-cc-pod-encrypted.yaml
+    $ kubectl apply -f ./enclave-cc-pod-encrypted.yaml
+    $ kubectl get pods
+
+    To Debug:
+    $ kubectl describe pod enclave-cc-pod
+    $ docker logs trustee-kbs-1
+    $ docker logs trustee-as-1
+    $ sudo journalctl -xeu containerd
+    $ sudo ls /run/containerd/agent-enclave
+    $ sudo cat /run/containerd/agent-enclave/<cid>/stderr 
+  

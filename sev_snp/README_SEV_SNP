@@ -1,0 +1,52 @@
+0) Look for the artificts under /opt/kata/. 
+   The config files are under /opt/kata/share/defaults/kata-containers/.
+
+1)  Verify pulling docker image.
+    $ docker login --username=niteeshkd  <<HG1
+    $ docker search test-cc-ssh
+    $ docker pull docker.io/niteeshkd/test-cc-ssh:v0
+
+2) Manifest file for the pod to luanch SNP CoCo.
+    $ cat cc-ssh-kata-qemu-snp.yaml
+...
+spec:
+  template:
+    metadata:
+      labels:
+        app: cc-ssh
+    spec:
+      runtimeClassName: kata-qemu-snp
+      containers:
+      - name: cc-ssh
+        image: docker.io/niteeshkd/test-cc-ssh:v0
+        imagePullPolicy: Always
+...
+
+
+3) Launch the pod.
+    $ kubectl apply -f cc-ssh-kata-qemu-snp.yaml
+    $ kubectl get pods
+    $ kubectl get service | grep "cc-ssh" #Get IP address
+    $ ls -l cc-ssh*
+    $ ssh -i cc-ssh root@<ipAddress>
+    $ kubectl delete -f cc-ssh-kata-cc.yaml
+
+4) To debug the issue during launching of the pod.
+    $ sudo journalctl -xeu containerd
+
+    # Enable debug options in related kata config file.
+      	enable_debug = true # For hypervisor.qemu
+	enable_debug = true #For agent.kata
+	debug_console_enabled = true
+	enable_debug = true # For runtime
+
+    # To use qemu with debug option, modify the kata config file as following.
+	path = "/data/niteesh/github/old/setup-confidential-containers/bin/qemu_debug.sh"
+
+	$ cat /data/niteesh/github/old/setup-confidential-containers/bin/qemu_debug.sh
+#!/usr/bin/env bash
+/data/niteesh/github/AMDSEV_snp_devel/usr/local/bin/qemu-system-x86_64 \
+-debugcon file:/data/niteesh/github/old/setup-confidential-containers/tmp/debug.log -global isa-debugcon.iobase=0x402 \
+-serial file:/data/niteesh/github/old/setup-confidential-containers/tmp/serial.log \
+"$@"
+

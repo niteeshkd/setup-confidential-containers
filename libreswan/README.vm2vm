@@ -1,0 +1,49 @@
+1) Install 2 VMs running Ubuntu 22.04 and connect to them.
+  $ sudo -E ./create_vm.sh 11 TAPNET
+  $ sudo -E ./create_vm.sh 12 TAPNET
+  $ sudo virsh net-dhcp-leases default  << To get IP addresses
+  $ ssh test@ip_vm1
+  $ ssh test@ip_vm2
+
+2) On each VM:
+  $ sudo apt -y install iperf3 libreswan pwgen
+  $ sudo apt install nmon
+
+3) Run iperf before creating VPN.
+  on vm1: $ iperf3 -s -p 5201
+  on vm2: $ iperf3 -c 192.168.122.156 -p 5201 -t 10 -O 5
+
+4) Create ipsec VPN tunnel 
+  # Ref: https://libreswan.org/wiki/Host_to_host_VPN_with_PSK
+
+  $ pwgen -s 64 1 
+   4H00gh3L3TPi5QKCTLFQwme5vhQOBh75tXbn7CLBd7UtUzx8yMUCF2hrTUNjODeW
+
+  $ sudo cat /etc/ipsec.secrets << on both VMs
+192.168.122.155 192.168.122.156: PSK "4H00gh3L3TPi5QKCTLFQwme5vhQOBh75tXbn7CLBd7UtUzx8yMUCF2hrTUNjODeW"
+
+  $ sudo cat /etc/ipsec.conf << on both VMs
+config setup
+    protostack=netkey
+
+conn mytunnel
+    left=192.168.122.155
+    right=192.168.122.156
+    authby=secret
+    # use auto=start when done testing the tunnel
+    auto=add
+
+  $ sudo ipsec setup start   << On both VMs 
+
+  $ sudo ipsec auto --rereadsecrets
+  $ sudo ipsec auto --add mytunnel
+  $ sudo ipsec auto --up mytunnel
+
+5) Modifying MTU
+  $ ip a | grep virbr0 << on host
+  $ for i in virbr0 virbr0-nic #tap0 tap1
+    do
+      sudo  ip link set dev $i mtu 9000
+    done
+  $ sudo ip link set dev ens2 mtu 9000 << on each VM after rebootinmg them.
+

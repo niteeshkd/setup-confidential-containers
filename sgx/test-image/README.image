@@ -1,0 +1,3 @@
+# Build and push image
+$ docker build -t docker.io/niteeshkd/test-image:unenc .
+$ docker push docker.io/niteeshkd/test-image:unenc

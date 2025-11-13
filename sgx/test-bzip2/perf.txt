@@ -1,0 +1,40 @@
+$ kubectl get pods
+NAME                     READY   STATUS      RESTARTS   AGE
+bzip2                    0/1     Completed   0          13s
+bzip2-sgx                0/1     Completed   0          115s
+
+$ kubectl logs bzip2
+busybox time bzip2 /tmp/file1G
+22:15:37
+real    0m 6.65s
+user    0m 6.42s
+sys     0m 0.22s
+22:15:43
+busybox time bunzip2 /tmp/file1G.bz2
+22:15:43
+real    0m 3.22s
+user    0m 2.63s
+sys     0m 0.53s
+22:15:47
+
+$ kubectl logs bzip2-sgx
+error: can not save history
+warning-path: Unable to locate the data directory.
+warning-path: Please set the XDG_DATA_HOME or HOME environment variable before starting fish.
+
+error: can not save universal variables or functions
+warning-path: Unable to locate the config directory.
+warning-path: Please set the XDG_CONFIG_HOME or HOME environment variable before starting fish.
+
+busybox time bzip2 /tmp/file1G
+22:34:27
+real    0m 12.56s
+user    183165782h 18m 48s
+sys     0m 0.00s
+22:34:40
+busybox time bunzip2 /tmp/file1G.bz2
+22:34:40
+real    0m 5.51s
+user    183165782h 18m 48s
+sys     0m 0.00s
+22:34:45

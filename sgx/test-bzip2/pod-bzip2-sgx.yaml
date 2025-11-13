@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bzip2-sgx
+spec:
+  restartPolicy: Never
+  containers:
+  - image: docker.io/niteeshkd/image-bzip2unzip-occlum:latest
+    imagePullPolicy: Always
+    name: bzip2-sgx
+    resources:
+      limits:
+        cpu: 1
+        sgx.intel.com/epc: 2048Mi
+    env:
+    - name: OCCLUM_RELEASE_ENCLAVE
+      value: "1"
+    workingDir: "/run/rune/occlum_instance/"
+    command:
+    - /run/rune/occlum_instance/build/bin/occlum-run
+    - /bin/test-bzip2unzip.sh
+    - "5"
+  runtimeClassName: enclave-cc

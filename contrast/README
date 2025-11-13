@@ -1,0 +1,119 @@
+$ curl --proto '=https' --tlsv1.2 -fLo contrast https://github.com/edgelesssys/contrast/releases/download/v0.7.1/contrast
+
+$ curl -fLO https://github.com/edgelesssys/contrast/releases/download/v0.7.1/emojivoto-demo.zip
+
+$ unzip emojivoto-demo.zip
+
+$ curl --proto '=https' --tlsv1.2 -fLo coordinator.yml https://github.com/edgelesssys/contrast/releases/download/v0.7.1/coordinator.yml
+
+$ contrast generate deployment/
+✔️ Patched targets
+✔️ Generated workload policy annotations
+✔️ Updated manifest manifest.json
+
+$ ./contrast -h
+contrast
+
+Usage:
+   [command]
+
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  generate    generate policies and inject into Kubernetes resources
+  help        Help about any command
+  runtime     Prints the runtimeClassName
+  set         Set the given manifest at the coordinator
+  verify      Verify a contrast deployment
+
+Flags:
+  -h, --help                   help for this command
+      --log-level string       set logging level (debug, info, warn, error, or a number) (default "warn")
+  -v, --version                version for this command
+      --workspace-dir string   directory to write files to, if not set explicitly to another location
+
+Use " [command] --help" for more information about a command.
+
+
+$ ./contrast generate -h
+Generate policies and inject into the given Kubernetes resources.
+
+This will add the Contrast Initializer and Contrast Service Mesh as init containers
+to your workloads and then download the referenced container images to calculate the
+dm-verity hashes of the image layers. In addition, the Rego policy will be used as
+base and updated with the given settings file. For each container workload, the
+policy is added as an annotation to the Kubernetes YAML.
+
+The hashes of the policies are added to the manifest.
+
+If the Kubernetes YAML contains a Contrast Coordinator pod whose policy differs from
+the embedded default, the generated policy will be printed to stdout, alongside a
+warning message on stderr. This hash needs to be passed to the set and verify
+subcommands.
+
+Usage:
+   generate [flags] paths...
+
+Flags:
+  -d, --disable-updates                  prevent further updates of the manifest
+  -h, --help                             help for generate
+  -m, --manifest string                  path to manifest (.json) file (default "manifest.json")
+  -p, --policy string                    path to policy (.rego) file (default "rules.rego")
+  -s, --settings string                  path to settings (.json) file (default "settings.json")
+      --skip-initializer                 skip injection of Contrast Initializer
+  -w, --workload-owner-key stringArray   path to workload owner key (.pem) file (default [workload-owner.pem])
+
+Global Flags:
+      --log-level string       set logging level (debug, info, warn, error, or a number) (default "warn")
+      --workspace-dir string   directory to write files to, if not set explicitly to another location
+
+
+$ ./contrast set -h
+Set the given manifest at the coordinator.
+
+This will connect to the given Coordinator using aTLS. During the connection
+initialization, the remote attestation of the Coordinator CVM happens and
+the connection will only be successful if the Coordinator conforms with the
+reference values embedded into the CLI.
+
+After the connection is established, the manifest is set. The Coordinator
+will re-generate the mesh CA certificate and accept new workloads to
+issuer certificates.
+
+Usage:
+   set [flags] paths...
+
+Flags:
+  -c, --coordinator string               endpoint the coordinator can be reached at
+      --coordinator-policy-hash string   override the expected policy hash of the coordinator (default "a3bfe2d9484a54900766041957a702b33fab4e666dd44fff940c52a4b2140d14")
+  -h, --help                             help for set
+  -m, --manifest string                  path to manifest (.json) file (default "manifest.json")
+      --workload-owner-key string        path to workload owner key (.pem) file (default "workload-owner.pem")
+
+Global Flags:
+      --log-level string       set logging level (debug, info, warn, error, or a number) (default "warn")
+      --workspace-dir string   directory to write files to, if not set explicitly to another location
+
+
+$ ./contrast verify -h
+Verify a contrast deployment.
+
+This will connect to the given Coordinator using aTLS. During the connection
+initialization, the remote attestation of the Coordinator CVM happens and
+the connection will only be successful if the Coordinator conforms with the
+reference values embedded into the CLI.
+
+After the connection is established, the CLI will request the manifest history,
+all policies, and the certificates of the Coordinator certificate authority.
+
+Usage:
+   verify [flags]
+
+Flags:
+  -c, --coordinator string               endpoint the coordinator can be reached at
+      --coordinator-policy-hash string   override the expected policy hash of the coordinator (default "a3bfe2d9484a54900766041957a702b33fab4e666dd44fff940c52a4b2140d14")
+  -h, --help                             help for verify
+      --workspace-dir string             directory to write files to, if not set explicitly to another location (default "./verify")
+
+Global Flags:
+      --log-level string   set logging level (debug, info, warn, error, or a number) (default "warn")
+

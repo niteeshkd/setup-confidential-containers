@@ -1,0 +1,167 @@
+diff --git a/src/runtime/config/configuration-qemu.toml.in b/src/runtime/config/configuration-qemu.toml.in
+index 73c30cc1f..15ba2ef01 100644
+--- a/src/runtime/config/configuration-qemu.toml.in
++++ b/src/runtime/config/configuration-qemu.toml.in
+@@ -33,6 +33,11 @@ machine_type = "@MACHINETYPE@"
+ #
+ # Default false
+ # confidential_guest = true
++#
++# On AMD SEV-SNP host, use SEV or SEV-SNP confidential guest by  using
++# 'sev_snp_guest = false' or 'sev_snp_guest = true' respectively.
++# Default false
++# sev_snp_guest = true
+ 
+ # Enable running QEMU VMM as a non-root user.
+ # By default QEMU VMM run as root. When this is set to true, QEMU VMM process runs as
+diff --git a/src/runtime/pkg/katautils/config-settings.go.in b/src/runtime/pkg/katautils/config-settings.go.in
+index 37dbfee45..601d95612 100644
+--- a/src/runtime/pkg/katautils/config-settings.go.in
++++ b/src/runtime/pkg/katautils/config-settings.go.in
+@@ -86,6 +86,7 @@ const defaultVhostUserStorePath string = "/var/run/kata-containers/vhost-user/"
+ const defaultRxRateLimiterMaxRate = uint64(0)
+ const defaultTxRateLimiterMaxRate = uint64(0)
+ const defaultConfidentialGuest = false
++const defaultSevSnpGuest = false
+ const defaultGuestSwap = false
+ const defaultRootlessHypervisor = false
+ const defaultDisableSeccomp = false
+diff --git a/src/runtime/pkg/katautils/config.go b/src/runtime/pkg/katautils/config.go
+index f3bc06bdf..dd996b403 100644
+--- a/src/runtime/pkg/katautils/config.go
++++ b/src/runtime/pkg/katautils/config.go
+@@ -149,6 +149,7 @@ type hypervisor struct {
+ 	DisableVhostNet                bool     `toml:"disable_vhost_net"`
+ 	GuestMemoryDumpPaging          bool     `toml:"guest_memory_dump_paging"`
+ 	ConfidentialGuest              bool     `toml:"confidential_guest"`
++	SevSnpGuest                    bool     `toml:"sev_snp_guest"`
+ 	GuestSwap                      bool     `toml:"enable_guest_swap"`
+ 	Rootless                       bool     `toml:"rootless"`
+ 	DisableSeccomp                 bool     `toml:"disable_seccomp"`
+@@ -827,6 +828,7 @@ func newQemuHypervisorConfig(h hypervisor) (vc.HypervisorConfig, error) {
+ 		GuestMemoryDumpPath:     h.GuestMemoryDumpPath,
+ 		GuestMemoryDumpPaging:   h.GuestMemoryDumpPaging,
+ 		ConfidentialGuest:       h.ConfidentialGuest,
++		SevSnpGuest:             h.SevSnpGuest,
+ 		GuestSwap:               h.GuestSwap,
+ 		Rootless:                h.Rootless,
+ 		LegacySerial:            h.LegacySerial,
+@@ -1221,6 +1223,7 @@ func GetDefaultHypervisorConfig() vc.HypervisorConfig {
+ 		TxRateLimiterMaxRate:    defaultTxRateLimiterMaxRate,
+ 		SGXEPCSize:              defaultSGXEPCSize,
+ 		ConfidentialGuest:       defaultConfidentialGuest,
++		SevSnpGuest:             defaultSevSnpGuest,
+ 		GuestSwap:               defaultGuestSwap,
+ 		Rootless:                defaultRootlessHypervisor,
+ 		DisableSeccomp:          defaultDisableSeccomp,
+diff --git a/src/runtime/virtcontainers/hypervisor.go b/src/runtime/virtcontainers/hypervisor.go
+index 3860d5384..1758bef5c 100644
+--- a/src/runtime/virtcontainers/hypervisor.go
++++ b/src/runtime/virtcontainers/hypervisor.go
+@@ -527,6 +527,9 @@ type HypervisorConfig struct {
+ 	// from memory encryption to both memory and CPU-state encryption and integrity.
+ 	ConfidentialGuest bool
+ 
++	// To switch between SNP and SEV Guest on AMD SEV-SNP host.
++	SevSnpGuest bool
++
+ 	// BootToBeTemplate used to indicate if the VM is created to be a template VM
+ 	BootToBeTemplate bool
+ 
+diff --git a/src/runtime/virtcontainers/hypervisor_linux_amd64.go b/src/runtime/virtcontainers/hypervisor_linux_amd64.go
+index 33d018fa6..c01b4caf4 100644
+--- a/src/runtime/virtcontainers/hypervisor_linux_amd64.go
++++ b/src/runtime/virtcontainers/hypervisor_linux_amd64.go
+@@ -34,7 +34,6 @@ func availableGuestProtection() (guestProtection, error) {
+ 			return snpProtection, nil
+ 		}
+ 	}
+-	// Only choose SEV if SEV-SNP unsupported
+ 	// SEV is supported and enabled when the kvm module `sev` parameter is set to `1` (or `Y` for linux >= 5.12)
+ 	if _, err := os.Stat(sevKvmParameterPath); err == nil {
+ 		if c, err := os.ReadFile(sevKvmParameterPath); err == nil && len(c) > 0 && (c[0] == '1' || c[0] == 'Y') {
+diff --git a/src/runtime/virtcontainers/qemu_amd64.go b/src/runtime/virtcontainers/qemu_amd64.go
+index e48cf901d..e584c8a13 100644
+--- a/src/runtime/virtcontainers/qemu_amd64.go
++++ b/src/runtime/virtcontainers/qemu_amd64.go
+@@ -26,6 +26,8 @@ type qemuAmd64 struct {
+ 
+ 	vmFactory bool
+ 
++	snpGuest bool
++
+ 	devLoadersCount uint32
+ 
+ 	sgxEPCSize int64
+@@ -95,6 +97,11 @@ func newQemuArch(config HypervisorConfig) (qemuArch, error) {
+ 		factory = true
+ 	}
+ 
++	snpguest := false
++	if config.SevSnpGuest {
++		snpguest = true
++	}
++
+ 	// IOMMU and Guest Protection require a split IRQ controller for handling interrupts
+ 	// otherwise QEMU won't be able to create the kernel irqchip
+ 	if config.IOMMU || config.ConfidentialGuest {
+@@ -122,6 +129,7 @@ func newQemuArch(config HypervisorConfig) (qemuArch, error) {
+ 			legacySerial:         config.LegacySerial,
+ 		},
+ 		vmFactory: factory,
++		snpGuest: snpguest,
+ 	}
+ 
+ 	if config.ConfidentialGuest {
+@@ -176,7 +184,7 @@ func (q *qemuAmd64) cpuModel() string {
+ 	// Temporary until QEMU cpu model 'host' supports AMD SEV-SNP
+ 	q.protection, err = availableGuestProtection()
+ 	if err == nil {
+-		if q.protection == snpProtection {
++		if q.protection == snpProtection && q.snpGuest {
+ 			cpuModel = "EPYC-v4"
+ 		}
+ 	}
+@@ -238,8 +246,13 @@ func (q *qemuAmd64) enableProtection() error {
+ 		if q.qemuMachine.Options != "" {
+ 			q.qemuMachine.Options += ","
+ 		}
+-		q.qemuMachine.Options += "confidential-guest-support=snp"
+-		logger.Info("Enabling SNP guest protection")
++		if q.protection == snpProtection && q.snpGuest {
++		        q.qemuMachine.Options += "confidential-guest-support=snp"
++		        logger.Info("Enabling SNP guest protection")
++		        return nil
++		}
++		q.qemuMachine.Options += "confidential-guest-support=sev"
++		logger.Info("Enabling SEV guest protection")
+ 		return nil
+ 
+ 	// TODO: Add support for other x86_64 technologies
+@@ -286,7 +299,8 @@ func (q *qemuAmd64) appendProtectionDevice(devices []govmmQemu.Device, firmware,
+ 				ReducedPhysBits: cpuid.AMDMemEncrypt.PhysAddrReduction,
+ 			}), "", nil
+ 	case snpProtection:
+-		return append(devices,
++                if q.snpGuest {
++		    return append(devices,
+ 			govmmQemu.Object{
+ 				Type:            govmmQemu.SNPGuest,
+ 				ID:              "snp",
+@@ -295,6 +309,16 @@ func (q *qemuAmd64) appendProtectionDevice(devices []govmmQemu.Device, firmware,
+ 				CBitPos:         cpuid.AMDMemEncrypt.CBitPosition,
+ 				ReducedPhysBits: 1,
+ 			}), "", nil
++                }
++		return append(devices,
++			govmmQemu.Object{
++				Type:            govmmQemu.SEVGuest,
++				ID:              "sev",
++				Debug:           false,
++				File:            firmware,
++				CBitPos:         cpuid.AMDMemEncrypt.CBitPosition,
++				ReducedPhysBits: cpuid.AMDMemEncrypt.PhysAddrReduction,
++			}), "", nil
+ 	case noneProtection:
+ 		return devices, firmware, nil
+ 

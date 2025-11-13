@@ -1,0 +1,60 @@
+Steps:
+0) Remove the old setup.
+   $ cd bin
+   $ ./remove_k8s.sh
+   $ ./uninstall_docker_containerd.sh
+
+1) Install docker and containerd 
+   $ ./install_docker_containerd.sh
+
+2) Create K8s cluster
+   $ ./create_k8s.sh
+
+3) Install operator from local repo.
+   $ cd ~/github/operator
+   $ kubectl apply -k config/release/
+   $ kubectl get pods -n confidential-containers-system
+
+   $ kubectl apply -k config/samples/ccruntime/default/
+   $ kubectl get pods -n confidential-containers-system
+   $ kubectl get runtimeclass
+   $ tree /opt/kata/
+   $ ls -l /opt/kata/share/defaults/kata-containers/configuration*
+   $ tree /opt/confidential-containers/
+
+   To uninstall:
+   $ kubectl delete -k config/samples/ccruntime/default/
+   $ kubectl delete -k config/release/
+
+3) Install operator using public path.
+   $ RELEASE_VERSION="v0.8.0"
+   $ kubectl apply -k "github.com/confidential-containers/operator/config/release?ref=${RELEASE_VERSION}"
+   $ kubectl get crd | grep ccruntime
+   $ kubectl explain ccruntimes.confidentialcontainers.org
+   
+   $ kubectl apply -k github.com/confidential-containers/operator/config/samples/ccruntime/default?ref=${RELEASE_VERSION}
+
+4) Custom Kata-shim
+   $ cd kata-containers/src/runtime
+   $ make
+   $ ls -l containerd-shim-kata-v2
+
+   $ sudo cp /opt/kata/bin/containerd-shim-kata-v2 /opt/kata/bin/containerd-shim-kata-v2.orig
+   $ sudo ln -sf /home/niteesh/github/niteeshkd/kata-containers/src/runtime/containerd-shim-kata-v2 /opt/kata/bin/containerd-shim-kata-v2
+
+5) Custom config file
+  $ sudo vi /opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
+  $ sudo vi /opt/kata/share/defaults/kata-containers/configuration-qemu-sev.toml
+
+  # Built using kata-deploy scripts from kata-containers/tools/packaging/kata-deploy/local-build/ 
+  $ ./kata-deploy-binaries.sh  --build=qemu-snp-experimental
+  $ ls -l build/qemu-snp-experimental/destdir/opt/kata/bin/qemu-system-x86_64-snp-experimental 
+   
+  $ ./kata-deploy-binaries.sh --build=ovmf-sev
+  $ ls -l build/ovmf-sev/destdir/opt/kata/share/ovmf/AMDSEV.fd
+
+  $ ./kata-deploy-binaries.sh --build=ovmf
+  $ ls -l build/ovmf-sev/destdir/opt/kata/share/ovmf/OVMF.fd
+
+  $ ./kata-deploy-binaries.sh --build=kernel-confidential
+

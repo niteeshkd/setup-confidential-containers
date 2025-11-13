@@ -1,0 +1,44 @@
+$ kubectl logs bzip2
+busybox time bzip2 /tmp/file1G
+22:03:24
+real    0m 6.57s
+user    0m 6.30s
+sys     0m 0.26s
+22:03:30
+busybox time bunzip2 /tmp/file1G.bz2
+22:03:30
+real    0m 3.59s
+user    0m 2.81s
+sys     0m 0.78s
+22:03:34
+
+
+$ kubectl logs bzip2-kata
+busybox time bzip2 /tmp/file1G
+20:16:19
+real    0m 7.54s
+user    0m 6.32s
+sys     0m 1.13s
+20:16:26
+busybox time bunzip2 /tmp/file1G.bz2
+20:16:26
+real    0m 15.68s
+user    0m 3.16s
+sys     0m 2.50s
+20:16:42
+
+
+$ kubectl logs bzip2-snp
+busybox time bzip2 /tmp/file1G
+22:04:02
+real    0m 22.97s
+user    0m 6.93s
+sys     0m 2.90s
+22:04:25
+busybox time bunzip2 /tmp/file1G.bz2
+22:04:25
+real    0m 24.19s
+user    0m 3.64s
+sys     0m 3.47s
+22:04:49
+

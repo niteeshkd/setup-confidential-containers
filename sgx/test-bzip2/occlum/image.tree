@@ -1,0 +1,33 @@
+root@f307248ef58b:~/niteesh/bzip2# tree occlum_instance/image
+occlum_instance/image
+|-- bin
+|   |-- busybox
+|   |-- fish
+|   `-- test-bzip2unzip.sh
+|-- dev
+|-- etc
+|-- host
+|-- lib
+|-- lib64
+|   `-- ld-linux-x86-64.so.2
+|-- opt
+|   `-- occlum
+|       `-- glibc
+|           `-- lib
+|               |-- libc.so.6
+|               |-- libdl.so.2
+|               |-- libgcc_s.so.1
+|               |-- libm.so.6
+|               |-- libpcre2-32.so.0
+|               |-- libpthread.so.0
+|               |-- libresolv.so.2
+|               |-- libstdc++.so.6
+|               `-- libtinfo.so.6
+|-- proc
+|-- root
+|-- sys
+`-- tmp
+    `-- file1G
+
+14 directories, 14 files
+

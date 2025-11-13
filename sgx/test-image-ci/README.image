@@ -1,0 +1,7 @@
+https://github.com/confidential-containers/enclave-cc/blob/main/docs/ci-setup.md
+https://github.com/confidential-containers/enclave-cc/tree/main/tools/packaging/build/test-image
+
+# Build and push image
+$ docker build -t test-image .
+$ docker tag test-image:latest  docker.io/niteeshkd/test-image:enc
+$ docker push docker.io/niteeshkd/test-image:enc

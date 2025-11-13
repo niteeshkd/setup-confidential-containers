@@ -1,0 +1,36 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod1-nebula
+spec:
+  runtimeClassName: kata-qemu
+  restartPolicy: Always
+  containers:
+  - name: nebula
+    command:
+    - "bin/sh"
+    - "-c"
+    - "sleep 10 && cat /config/hosts >> /etc/hosts ; mkdir /dev/net ; mknod /dev/net/tun c 10 200 ; tar xvf config/nebula-linux-amd64.tar.gz && /nebula -config /config/pod1-config"
+    image: public.ecr.aws/docker/library/alpine:latest
+    resources:
+      limits:
+        cpu: "8"
+    securityContext:
+      privileged: true 
+    volumeMounts:
+    - mountPath: /config
+      name: nebula-config
+  - name: app
+    command:
+    - "bin/sh"
+    - "-c"
+    - "apk add bash iperf3 && sleep 20 && iperf3 -c 192.168.100.1 -t 100 -p 5201 && while (true); do sleep 10000; done"
+    image: public.ecr.aws/docker/library/alpine:latest
+    securityContext:
+      privileged: true 
+  volumes:
+  - name: nebula-config                                         
+    hostPath:
+      path: /data/niteesh/nebula-test/nebula-config # directory location on host
+      type: Directory # this field is optional

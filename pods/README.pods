@@ -1,0 +1,29 @@
+1) https://www.redhat.com/sysadmin/kubernetes-pod-network-communications
+    $ kubectl apply -f ./nginx_busybox.yaml
+    $ kubectl get pods -o wide
+    $ kubectl exec -it -c busybox nginx-busybox -- /bin/sh
+
+3) pods:
+    $ kubectl apply -f ./pods.yaml
+    $ kubectl get pods -o wide
+    $ kubectl exec -it pod1 -- /bin/bash
+      # iperf3 -s -p 5201
+    $ kubectl exec -it pod2 -- /bin/bash
+      # iperf3 -c <ip of pod1> -t 10 -p 5201
+
+3) pods-libreswan-kata:
+    $ kubectl apply -f ./pods-libreswan-kata.yaml
+    $ kubectl get pods -o wide
+    $ kubectl exec -it pod1-lswan -- /bin/bash
+      # iperf3 -s -p 5201
+    $ kubectl exec -it pod2-lswan -- /bin/bash
+      # iperf3 -c <ip of pod1> -t 10 -p 5201
+
+    $ vi ipsec.secrets ipsec.conf << correct IP addresses
+
+    $ ./copy_secrets.sh
+
+
+    # Ref
+      https://libreswan.org/wiki/Host_to_host_VPN_with_PSK
+      https://libreswan.org/wiki/Host_to_host_VPN

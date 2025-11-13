@@ -1,0 +1,65 @@
+KBS=/data/niteesh/github/trustee
+
+1) Configure and Run Turstee/KBS
+    $ cd $KBS
+    $ openssl genpkey -algorithm ed25519 > kbs/config/private.key
+    $ openssl pkey -in kbs/config/private.key -pubout -out kbs/config/public.pub
+
+    $ docker compose up -d
+    $ docker ps
+
+    $ docker kill kbs-rvps-1 kbs-as-1 kbs-kbs-1 kbs-keyprovider-1
+    $ docker rm kbs-rvps-1 kbs-as-1 kbs-kbs-1 kbs-keyprovider-1
+
+2) Encrypt Image and register with KBS.
+    # Install skopeo if not installed
+
+    niteesh@b77r44u11-node:/data/niteesh/github$ 
+	$ cat ocicrypt.conf 
+	{
+	  "key-providers": {
+		"attestation-agent": {
+		  "grpc": "127.0.0.1:50000"
+	}}}
+
+    $ docker login --username=niteeshkd <<<HG1 
+	
+    $ OCICRYPT_KEYPROVIDER_CONFIG=ocicrypt.conf skopeo copy --insecure-policy --encryption-key provider:attestation-agent docker://docker.io/niteeshkd/occlum-test:unenc docker://docker.io/niteeshkd/occlum-test:enc
+
+    $ skopeo inspect docker://docker.io/niteeshkd/occlum-test:enc
+     >>> Look for org.opencontainers.image.enc.keys.provider.attestation-agent (i.e. enc_key)
+
+    $ echo $enc_key | base64 --decode
+    >>> Look for {"kid":"kbs:///default/image-kek/...}
+
+    $ tree kbs/data
+
+3) Sign Image and create security policy with KBS.
+    # Install cosign if not installed.
+    $ cosign generate-key-pair
+    $ sudo mkdir -p kbs/data/kbs-storage/default/cosign-key 
+    $ sudo cp cosign.pub kbs/data/kbs-storage/default/cosign-key/1
+
+    $ cosign sign --key cosign.key docker.io/niteeshkd/occlum-test:enc
+
+    $ sudo mkdir -p kbs/data/kbs-storage/default/security-policy
+
+    $ sudo vi kbs/data/kbs-storage/default/security-policy/test
+{
+    "default": [{"type": "reject"}],
+    "transports": {
+        "docker": {
+            "docker.io/niteeshkd/occlum-test:enc": [
+                {
+                    "type": "sigstoreSigned",
+                    "keyPath": "kbs:///default/cosign-key/1"
+                }
+            ]
+        }
+    }
+}
+
+Ref:
+https://github.com/confidential-containers/trustee/blob/main/kbs/docs/cluster.md
+https://github.com/confidential-containers/confidential-containers/blob/main/quickstart.md
+
