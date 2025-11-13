@@ -1,0 +1,10 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: ContainerRuntimeConfig
+metadata:
+ name: master-custom-loglevel
+spec:
+ machineConfigPoolSelector:
+   matchLabels:
+     custom-crio: master-custom-loglevel
+ containerRuntimeConfig:
+   logLevel: debug

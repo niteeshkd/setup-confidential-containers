@@ -1,0 +1,35 @@
+# Use 4.16 as the base
+# 4.6.11 release image: quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:31feb7503f06db4023350e3d9bb3cfda661cc81ff21cef429770fb12ae878636
+
+ARG OCP_RELEASE_IMAGE
+
+FROM $OCP_RELEASE_IMAGE
+
+ARG KATA_RELEASE_VERSION=3.9.0
+
+COPY snp/centos-snp.repo /etc/yum.repos.d
+
+WORKDIR /
+
+# Install upstream Kata bits
+RUN curl -LO https://github.com/kata-containers/kata-containers/releases/download/${KATA_RELEASE_VERSION}/kata-static-${KATA_RELEASE_VERSION}-amd64.tar.xz && \
+    mkdir -p /var/opt && \
+    tar xvf  kata-static-${KATA_RELEASE_VERSION}-amd64.tar.xz --strip-components=2 -C /opt && \
+    mv /opt/kata /usr/kata && \
+    echo 'd /var/opt 755 root root -' >> /usr/lib/tmpfiles.d/kata.conf && \
+    echo 'L+ /opt/kata - - - - /usr/kata' >> /usr/lib/tmpfiles.d/kata.conf
+
+
+COPY snp/crio.conf.d/ /etc/crio/crio.conf.d/
+
+#Install EL9 6.11 kernel with SEV-SNP support
+#RUN rpm-ostree override replace https://elrepo.org/linux/kernel/el9/x86_64/RPMS/kernel-ml-{,core-,modules-,modules-extra-}6.11.1-1.el9.elrepo.x86_64.rpm
+
+#Install EL9_5 5.14 kernel 
+#RUN rpm-ostree override replace https://download.eng.bos.redhat.com/rhel-9/composes/RHEL-9/RHEL-9.5.0-20240930.2/compose/BaseOS/x86_64/os/Packages/kernel-{,core-,modules-,modules-core-,modules-extra-}5.14.0-503.10.1.el9_5.x86_64.rpm
+COPY snp/kernel/ /
+RUN rpm-ostree override replace kernel-{,core-,modules-,modules-core-,modules-extra-}5.14.0-503.10.1.el9_5.x86_64.rpm
+
+
+RUN rpm-ostree cleanup -m && \
+    ostree container commit
